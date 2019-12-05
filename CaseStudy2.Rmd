@@ -1,0 +1,564 @@
+---
+title: "CaseStudy2"
+author: "Malcolm Carlson"
+date: "12/3/2019"
+output: html_document
+
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Executive Summary
+
+### This case study explores an employee data set with 870 observations and 44 varialbles.  The first question of interest is what factors lead to employee attrition.  A prediction for employee income will also be provided based on a model.  Job specific trends will also be examined along with any other trends or data that may prove useful.
+
+
+```{r}
+library(dplyr)
+library(magrittr)
+library(tidyverse)
+library(GGally)
+library(corrplot)
+library(DataExplorer)
+library(class)
+library(caret)
+library(e1071)
+library(investr)
+library(MASS)
+library(leaps)
+library(Hmisc)
+library(randomForest)
+library(car)
+```
+
+# Import data and create numeric factors for non-numeric new categorical variables 
+```{r}
+attritdf<-read.csv(file="/Users/malco/Documents/MDS/MDS_6306_DDS/DDS-CaseStudy2/CaseStudy2-data.csv",header=TRUE)
+noattritdf <- read.csv(file="/Users/malco/Documents/MDS/MDS_6306_DDS/DDS-CaseStudy2/CaseStudy2CompSetNoAttrition.csv",header=TRUE)
+nosalarydf <- read.csv(file="/Users/malco/Documents/MDS/MDS_6306_DDS/DDS-CaseStudy2/CaseStudy2CompSetNoSalary.csv",header=TRUE)
+
+attritdf$AgeGrp<-cut(attritdf$Age,breaks = c(17,24,34,44,54,Inf),labels=c('18-24','25-34','35-44','46-54','55+'))
+noattritdf$AgeGrp<-cut(noattritdf$Age,breaks = c(17,24,34,44,54,Inf),labels=c('18-24','25-34','35-44','46-54','55+'))
+
+attritdf <- attritdf %>% mutate(AttrNum = case_when(
+  Attrition == "Yes" ~ 1,
+  Attrition == "No" ~ 0
+  ))
+
+attritdf <- attritdf %>% mutate(GenNum = case_when(
+  Gender == "Male" ~ 1,
+  Gender == "Female" ~ 0
+))
+noattritdf <- noattritdf %>% mutate(GenNum = case_when(
+  Gender == "Male" ~ 1,
+  Gender == "Female" ~ 0
+))
+
+attritdf <- attritdf %>% mutate(TravLevel = case_when(
+  BusinessTravel == "Non-Travel" ~ 0,
+  BusinessTravel == "Travel_Rarely" ~ 1,
+  BusinessTravel == "Travel_Frequently" ~ 2
+))
+noattritdf <- noattritdf %>% mutate(TravLevel = case_when(
+  BusinessTravel == "Non-Travel" ~ 0,
+  BusinessTravel == "Travel_Rarely" ~ 1,
+  BusinessTravel == "Travel_Frequently" ~ 2
+))
+
+
+attritdf <- attritdf %>% mutate(OTNum = case_when(
+  OverTime == "Yes" ~ 1,
+  OverTime == "No" ~0
+))
+noattritdf <- noattritdf %>% mutate(OTNum = case_when(
+  OverTime == "Yes" ~ 1,
+  OverTime == "No" ~0
+))
+
+attritdf <- attritdf %>% mutate(MariStatNum = case_when(
+  MaritalStatus == "Single" ~ 0,
+  MaritalStatus == "Married" ~ 1,
+  MaritalStatus == "Divorced" ~ 2
+))
+noattritdf <- noattritdf %>% mutate(MariStatNum = case_when(
+  MaritalStatus == "Single" ~ 0,
+  MaritalStatus == "Married" ~ 1,
+  MaritalStatus == "Divorced" ~ 2
+))
+
+attritdf <- attritdf %>% mutate(EducNum = case_when(
+  EducationField == "Medical" ~ 0,
+  EducationField == "Life Sciences" ~ 1,
+  EducationField == "Marketing" ~ 2,
+  EducationField == "Technical Degree" ~ 3,
+  EducationField == "Human Resources" ~ 4,
+  EducationField == "Other" ~ 5
+))
+noattritdf <- noattritdf %>% mutate(EducNum = case_when(
+  EducationField == "Medical" ~ 0,
+  EducationField == "Life Sciences" ~ 1,
+  EducationField == "Marketing" ~ 2,
+  EducationField == "Technical Degree" ~ 3,
+  EducationField == "Human Resources" ~ 4,
+  EducationField == "Other" ~ 5
+))
+
+attritdf <- attritdf %>% mutate(JRoleNum = case_when(
+  JobRole == "Research Director" ~ 0,
+  JobRole == "Manufacturing Director" ~ 1,
+  JobRole == "Sales Executive" ~ 2,
+  JobRole == "Research Scientist" ~ 3,
+  JobRole == "Sales Representative" ~ 4,
+  JobRole == "Healthcare Representative" ~ 5,
+  JobRole == "Manager" ~ 6,
+  JobRole == "Laboratory Technician" ~ 7,
+  JobRole == "Human Resources" ~ 8
+))
+noattritdf <- noattritdf %>% mutate(JRoleNum = case_when(
+  JobRole == "Research Director" ~ 0,
+  JobRole == "Manufacturing Director" ~ 1,
+  JobRole == "Sales Executive" ~ 2,
+  JobRole == "Research Scientist" ~ 3,
+  JobRole == "Sales Representative" ~ 4,
+  JobRole == "Healthcare Representative" ~ 5,
+  JobRole == "Manager" ~ 6,
+  JobRole == "Laboratory Technician" ~ 7,
+  JobRole == "Human Resources" ~ 8
+))       
+
+allnumeric<-attritdf%>%dplyr::select(Age,AgeGrp,AttrNum,TravLevel,DailyRate,DistanceFromHome,Education,EducNum,EnvironmentSatisfaction,GenNum,HourlyRate,JobInvolvement,JobLevel,JRoleNum,JobSatisfaction,MariStatNum,MonthlyIncome,MonthlyRate,NumCompaniesWorked,OTNum,PercentSalaryHike,PerformanceRating,RelationshipSatisfaction,StockOptionLevel,TotalWorkingYears,TrainingTimesLastYear,WorkLifeBalance,YearsAtCompany,YearsInCurrentRole,YearsSinceLastPromotion,YearsWithCurrManager)
+
+```
+
+# Convert integers to factors where values are categorical
+```{r}
+
+attritdf$JobInvolvement <- as.factor(attritdf$JobInvolvement)
+noattritdf$JobInvolvement <- as.factor(noattritdf$JobInvolvement)
+nosalarydf$JobInvolvement <- as.factor(nosalarydf$JobInvolvement)
+
+attritdf$JobLevel <- as.factor(attritdf$JobLevel)
+noattritdf$JobLevel <- as.factor(noattritdf$JobLevel)
+nosalarydf$JobLevel <- as.factor(nosalarydf$JobLevel)
+
+attritdf$JobSatisfaction <- as.factor(attritdf$JobSatisfaction)
+noattritdf$JobSatisfaction <- as.factor(noattritdf$JobSatisfaction)
+nosalarydf$JobSatisfaction <- as.factor(nosalarydf$JobSatisfaction)
+
+attritdf$PerformanceRating <- as.factor(attritdf$PerformanceRating)
+noattritdf$PerformanceRating <- as.factor(noattritdf$PerformanceRating)
+nosalarydf$PerformanceRating <- as.factor(nosalarydf$PerformanceRating)
+
+attritdf$RelationshipSatisfaction <- as.factor(attritdf$RelationshipSatisfaction)
+noattritdf$RelationshipSatisfaction <- as.factor(noattritdf$RelationshipSatisfaction)
+nosalarydf$RelationshipSatisfaction <- as.factor(nosalarydf$RelationshipSatisfaction)
+
+attritdf$StockOptionLevel <- as.factor(attritdf$StockOptionLevel)
+nosalarydf$StockOptionLevel <- as.factor(nosalarydf$StockOptionLevel)
+noattritdf$StockOptionLevel <- as.factor(noattritdf$StockOptionLevel)
+
+attritdf$TrainingTimesLastYear <- as.factor(attritdf$TrainingTimesLastYear)
+noattritdf$TrainingTimesLastYear <- as.factor(noattritdf$TrainingTimesLastYear)
+nosalarydf$TrainingTimesLastYear <- as.factor(nosalarydf$TrainingTimesLastYear)
+
+attritdf$WorkLifeBalance <- as.factor(attritdf$WorkLifeBalance)
+noattritdf$WorkLifeBalance <- as.factor(noattritdf$WorkLifeBalance)
+nosalarydf$WorkLifeBalance <- as.factor(nosalarydf$WorkLifeBalance)
+
+attritdf$Education <- as.factor(attritdf$Education)
+noattritdf$Education <- as.factor(noattritdf$Education)
+nosalarydf$Education <- as.factor(nosalarydf$Education)
+
+attritdf$EnvironmentSatisfaction <- as.factor(attritdf$EnvironmentSatisfaction)
+noattritdf$EnvironmentSatisfaction <- as.factor(noattritdf$EnvironmentSatisfaction)
+nosalarydf$EnvironmentSatisfaction <- as.factor(nosalarydf$EnvironmentSatisfaction)
+
+```
+
+## EDA Section
+### Analysis with DataExplorer library
+```{r}
+str(attritdf)
+names(attritdf)
+describe(attritdf)
+
+plot_intro(attritdf)
+plot_missing(attritdf)
+plot_bar(attritdf)
+plot_histogram(attritdf)
+plot_qq(attritdf)
+
+# Correlationapalooza
+plot_correlation(allnumeric, type = c("all", "discrete", "continuous"),
+  maxcat = 20L, cor_args = list(), geom_text_args = list(),
+  title = NULL, ggtheme = theme_gray(),
+  theme_config = list(legend.position = "bottom", axis.text.x =
+  element_text(angle = 90)))
+
+# Correlation with just continuous variables
+attritcor1 <- attritdf%>%dplyr::select(NumCompaniesWorked,YearsInCurrentRole,YearsSinceLastPromotion,YearsWithCurrManager,YearsAtCompany)
+plot_correlation(attritcor1)
+
+attrcont <- attritdf%>%dplyr::select(Attrition,Age,NumCompaniesWorked,YearsInCurrentRole,YearsSinceLastPromotion,YearsWithCurrManager,YearsAtCompany,MonthlyIncome,TotalWorkingYears)
+attrcont %>%
+  filter(Attrition == "Yes") %>%
+  select_if(is.numeric) %>%
+  cor() %>%
+  corrplot::corrplot()
+
+attritdf %>% 
+  dplyr::select(Age, DailyRate, DistanceFromHome, HourlyRate, MonthlyIncome, MonthlyRate, YearsAtCompany, YearsWithCurrManager, YearsSinceLastPromotion) %>% 
+  gather(metric, value) %>% 
+  ggplot(aes(value, fill = metric)) + 
+  geom_density(show.legend = FALSE) + 
+  facet_wrap(~ metric, scales = "free")
+
+attritdf %>% 
+  dplyr::select(Age, DailyRate, DistanceFromHome, HourlyRate, MonthlyIncome, MonthlyRate, YearsAtCompany, YearsWithCurrManager, YearsSinceLastPromotion) %>% 
+  gather(metric, value) %>% 
+  ggplot(aes(value, fill = metric)) + 
+  geom_histogram(show.legend = FALSE) + 
+  facet_wrap(~ metric, scales = "free")
+
+```
+
+## Scatterplot analysis
+```{r}
+plot_scatterplot(attritdf, by="MonthlyIncome")
+plot_scatterplot(attritdf, by="YearsAtCompany")
+plot_scatterplot(attritdf, by="YearsInCurrentRole")
+plot_scatterplot(attritdf, by="YearsSinceLastPromotion")
+plot_scatterplot(attritdf, by="YearsWithCurrManager")
+plot_scatterplot(attritdf, by="NumCompaniesWorked")
+
+```
+
+# Explore AgeGrp
+```{r}
+attritdf%>%ggplot(aes(x=MonthlyIncome,YearsAtCompany,color=AgeGrp))+geom_point()
+attritdf%>%ggplot(aes(x=MonthlyIncome,YearsAtCompany,color=AgeGrp))+geom_smooth()
+
+attritdf%>%ggplot(aes(x=YearsSinceLastPromotion,PercentSalaryHike,color=AgeGrp))+geom_point()
+attritdf%>%ggplot(aes(x=YearsSinceLastPromotion,PercentSalaryHike,color=AgeGrp))+geom_smooth()
+
+attritdf%>%ggplot(aes(x=YearsWithCurrManager,MonthlyIncome,color=AgeGrp))+geom_point()
+attritdf%>%ggplot(aes(x=YearsWithCurrManager,MonthlyIncome,color=AgeGrp))+geom_smooth()
+
+attritdf%>%ggplot(aes(x=YearsAtCompany,MonthlyIncome,color=AgeGrp))+geom_point()
+attritdf%>%ggplot(aes(x=YearsAtCompany,MonthlyIncome,color=AgeGrp))+geom_smooth()
+
+
+# Attrition by Age Group
+AgeGrpdf <- attritdf%>%dplyr::select(AgeGrp,Attrition)
+AgeGrpdf <- AgeGrpdf%>%filter(Attrition=="Yes")
+AgeGrpplot <- ggplot(AgeGrpdf,aes(x=AgeGrp,group=Attrition,color=AgeGrp))+geom_bar(aes(y = ..prop..,fill=factor(..x..)), stat="count")+ggtitle("Attrition by Age Group")+
+  geom_text(aes(label = scales::percent(..prop..),y= ..prop.. ), stat= "count", vjust = -.1)+labs(y = "Percent")+ylab(NULL)+xlab("Age groups")
+
+AgeGrpplot
+
+
+```
+
+## Attrition by JobRole
+```{r}
+AgeJLev <- attritdf%>%dplyr::select(JobLevel,Attrition)
+AgeJLev <- AgeJLev%>%filter(Attrition=="Yes")
+
+AgeJLevplot <- ggplot(AgeJLev,aes(x=JobLevel,group=Attrition,color=JobLevel))+geom_bar(aes(y = ..prop..,fill=factor(..x..)), stat="count")+ggtitle("Attrition by Job Level")+
+geom_text(aes(label = scales::percent(..prop..),y= ..prop.. ), stat= "count", vjust = -.1)+labs(y = "Percent")+ylab(NULL)+xlab("Job Levels")
+
+AgeJLevplot
+
+```
+
+## This section creates a dataframe with an abbreviated jobrole title jrole, and calculates the amount of attrition and non-attrition by job role.
+```{r}
+
+tempdf <- attritdf%>%dplyr::select(JobRole,Attrition,MonthlyIncome)%>%group_by(JobRole)
+jrno <- tempdf%>%filter(Attrition=="Yes")
+jrno <- jrno%>%summarise(AttrCnt=n())
+jry <- tempdf%>%filter(Attrition=="No")
+jry <- tempdf%>%summarise(NoAttrCnt=n())
+AttrJobRoledf <- merge(jry,jrno)
+AttrJobRoledf <- AttrJobRoledf %>% mutate(JRole = case_when(
+  JobRole == "Healthcare Representative" ~ "HC_Rep",
+  JobRole == "Human Resources" ~ "HR",
+  JobRole == "Laboratory Technician" ~ "Lab_Tech",
+  JobRole == "Manager" ~ "Mgr",
+  JobRole == "Manufacturing Director" ~ "Manfact_Dir",
+  JobRole == "Research Director" ~ "Re_Dir",
+  JobRole == "Research Scientist" ~ "Re_Scientist",
+  JobRole == "Sales Executive" ~ "SalesExec",
+  JobRole == "Sales Representative" ~ "SalesRep"
+))
+
+```
+
+## MonthlyIncome by JobRole
+```{r}
+
+ggplot(tempdf,aes(x=NULL,y=MonthlyIncome,fill=JobRole))+geom_boxplot()+ggtitle("Summary statistics by Monthly Income and Job Role")+ylab("Monthly Income")+xlab("Job Role")
+
+
+attritdf%>%ggplot()+geom_bar(aes(y=JobSatisfaction,x=JobRole,fill=JobSatisfaction),stat="identity",size=4)+theme(axis.text.x = element_text(angle = 90, hjust = 1))+ylab(NULL)+xlab(NULL)+ggtitle("Job Satisfaction Scores by Job Role")
+
+
+```
+
+
+## This section orders the data and reduces to top Job Roles with the most attrition.
+```{r}
+
+ggplot(AttrJobRoledf,aes(x=JobRole,y=AttrCnt))+geom_point()+ylab("Attrition Count")+xlab("Job Role")+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+# MonthlyIncome by job role
+IncomeJobRolePlot <- ggplot(tempdf,aes(JobRole, MonthlyIncome,fill=JobRole))+geom_bar(stat = "identity",position = position_stack(reverse = TRUE))+coord_flip()
+IncomeJobRolePlot
+
+
+```
+
+```{r}
+# Continuous variable relationship analysis
+# MonthlyIncome,YearsAtCompany,PercentSalaryHike,NumCompaniesWorked,TotalWorkingYears,YearsInCurrentRole,YearsSinceLastPromotion,YearsWithCurrManager
+
+# Attrition by gender
+AttritReduced <- attritdf%>%dplyr::select(Attrition,Age,AgeGrp,Gender,YearsSinceLastPromotion,YearsWithCurrManager,JobRole,)%>%group_by(Attrition="Yes")
+
+AttritReduced%>%ggplot(aes(x=Gender,fill=Gender))+geom_bar()+ggtitle("Bar chart of Attrition by Gender")+xlab(NULL)+ylab(NULL)+geom_text(stat = "count",aes(label=..count..))+theme(legend.position = "none")
+
+attritdf%>%ggplot(aes(x=Gender,fill=Gender))+geom_bar()+ggtitle("Bar chart by Gender")+xlab(NULL)+ylab(NULL)+geom_text(stat = "count",aes(label=..count..))+theme(legend.position = "none")
+
+```
+
+
+## Top factors that contribute to turnover multi linear regression 
+## Test assumptions with residual plots and histogram of residuals. Inital qq plots were not as linear as I would have liked but appeared worse after log transforming.  I also looked at sqr the continuous variables but did not like how the data turned out.
+```{r}
+
+set.seed(123)
+training.samples <- attritdf$AttrNum %>%
+createDataPartition(p=0.8, list = FALSE)
+train.data <- attritdf[training.samples, ]
+test.data <- attritdf[-training.samples, ]
+
+attritdflog <- attritdf%>%dplyr::select(MonthlyIncome,Attrition,AttrNum,Age,GenNum,YearsInCurrentRole,TotalWorkingYears,TrainingTimesLastYear,YearsSinceLastPromotion,JobSatisfaction,PerformanceRating,RelationshipSatisfaction,EnvironmentSatisfaction,DistanceFromHome,StockOptionLevel,NumCompaniesWorked,JobInvolvement,JRoleNum,EducNum,OTNum,TravLevel,MariStatNum)%>%mutate(logYSLP = log(YearsSinceLastPromotion),logDFH=log(DistanceFromHome),logNCW=log(NumCompaniesWorked),logTWY=log(TotalWorkingYears),sqrYSLP=(YearsSinceLastPromotion)^2)
+
+# Initial model with most variables that made sense
+model1<-lm(AttrNum~Age+GenNum+YearsInCurrentRole+TotalWorkingYears+TrainingTimesLastYear+YearsSinceLastPromotion+JobSatisfaction+PerformanceRating+RelationshipSatisfaction+EnvironmentSatisfaction+DistanceFromHome+StockOptionLevel+NumCompaniesWorked+JobInvolvement+JRoleNum+EducNum+OTNum+TravLevel+MariStatNum,data=attritdflog)
+
+outlierTest(model1)
+qqPlot(model1,main = "QQ Plot")
+leveragePlots(model1,main = "Leverage Plots")
+spreadLevelPlot(model1)
+ncvTest(model1)
+crPlots(model1)
+
+mod1resid = rstudent(model1)
+hist(mod1resid,col="red",main = "Histogram of residuals for initial model",ylab = NULL,xlab = NULL)
+
+plot(model1)
+summary(model1)
+car::vif(model1)
+
+# model after looking at p-values of multi-linear regression and their VIF scores
+ggplot(attritdf,aes(sample=YearsSinceLastPromotion,colour=Attrition))+stat_qq()+stat_qq_line()+ggtitle("QQPlot - YearsSinceLastPromotionw with Attrition")+xlab(NULL)+ylab(NULL)
+#ggplot(attritdflog,aes(sample=logYSLP,colour=Attrition))+stat_qq()+stat_qq_line()
+
+ggplot(attritdf,aes(sample=DistanceFromHome,colour=Attrition))+stat_qq()+stat_qq_line()+ggtitle("QQPlot - DistanceFromHome with Attrition")+xlab(NULL)+ylab(NULL)
+#ggplot(attritdflog,aes(sample=logDFH,colour=Attrition))+stat_qq()+stat_qq_line()+ggtitle("QQPlot - log transformed DistanceFromHome with Attrition")
+
+ggplot(attritdf,aes(sample=NumCompaniesWorked,colour=Attrition))+stat_qq()+stat_qq_line()+ggtitle("QQPlot - NumCompaniesWorked with Attrition")+xlab(NULL)+ylab(NULL)
+#ggplot(attritdflog,aes(sample=logNCW,colour=AttrNum))+stat_qq()+stat_qq_line()+ggtitle("QQPlot - log transformed NumCompaniesWorked with Attrition")
+
+ggplot(attritdflog,aes(sample=TotalWorkingYears,colour=Attrition))+stat_qq()+stat_qq_line()+ggtitle("QQPlot - TotalWorkingYears with Attrition")+xlab(NULL)+ylab(NULL)
+#ggplot(attritdflog,aes(sample=logTWY,colour=Attrition))+stat_qq()+stat_qq_line()+ggtitle("QQPlot - log transformed TotalWorkingYears with Attrition")
+
+
+model2 <- lm(AttrNum~YearsSinceLastPromotion+JobSatisfaction+EnvironmentSatisfaction+DistanceFromHome+NumCompaniesWorked+JobInvolvement+OTNum, data=attritdflog)
+
+summary(model2)
+car::vif(model2)
+plot(model2)
+mod2resid = rstudent(model2)
+hist(mod2resid,col="blue",main = "Histogram of residuals of final model",ylab = NULL,xlab = NULL)
+
+
+```
+
+
+## Other interesting trends
+### Gender - Jobrole MonthlyIncome, Jobrole Attrition Jobrole NoAttrition
+```{r}
+attritdf%>%ggplot(aes(x=YearsAtCompany,MonthlyIncome,color=Gender))+geom_point()
+attritdf%>%ggplot(aes(x=YearsAtCompany,MonthlyIncome,color=Gender))+geom_smooth()+ggtitle("Monthly income over years with company - M vs F")
+
+attritdf%>%ggplot(aes(x=YearsWithCurrManager,MonthlyIncome,color=Gender))+geom_point()
+attritdf%>%ggplot(aes(x=YearsWithCurrManager,MonthlyIncome,color=Gender))+geom_smooth()+ggtitle("Comparison of Income by Gender over time with same manager")
+attritdf%>%ggplot(aes(x=Age,MonthlyIncome,color=Gender))+geom_point()
+attritdf%>%ggplot(aes(x=Age,MonthlyIncome,color=Gender))+geom_smooth()+ggtitle("Monthly Income and Age - M vs F")
+
+ggplot(attritdf,aes(sample=MonthlyIncome,colour=factor(Gender)))+stat_qq()+stat_qq_line()
+
+genNCWviolin <- ggplot(attritdf,aes(x=JobRole,y=NumCompaniesWorked,fill=Gender))+geom_violin()+theme(axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle("Number of Companies worked by Job Role and Gender")
+genNCWviolin
+genYACviolin <- ggplot(attritdf, aes(x=JobRole, y=YearsAtCompany,fill=Gender))+geom_violin()+theme(axis.text.x = element_text(angle = 90, hjust = 1))+ggtitle("Years At the Company by Job Role and Gender")
+genYACviolin
+genNCW <- ggplot(attritdf, aes(x=JobRole,y=MonthlyIncome,fill=Gender))+geom_col(position = "dodge2")+theme(axis.text.x = element_text(angle = 90, hjust = 1))
+genNCW+ggtitle("Income by Job Role and Gender")
+
+
+```
+
+
+## Classifications
+## knn (classify attrition as yes) noattritdf=testdata
+```{r}
+set.seed(123)
+perc=.8
+numks = 5
+
+iterations=100
+masterAcc = matrix(nrow = iterations, ncol = numks)
+masterSensitivity = matrix(nrow = iterations)
+masterSpecificity = matrix(nrow = iterations)
+
+for(j in 1:iterations)
+{
+ accs = data.frame(accuracy=numeric(numks),k=numeric(numks))
+ trainIndices = sample(1:dim(attritdf)[1],
+ round(perc * dim(attritdf)[1]))
+ train = attritdf[trainIndices,]
+ test = attritdf[-trainIndices,]
+
+  for(i in 1:numks)
+  {
+  classifications = knn(train[,c(2,12,15,16,18,22,25)],test[,c(2,12,15,16,18,22,25)],train$AttrNum,prob = TRUE, k = i)
+  table(classifications,test$AttrNum)
+  CM = confusionMatrix(table(classifications,test$AttrNum))
+  masterAcc[j,i] = CM$overall[1]
+  masterSensitivity[j]=CM$byClass[1]
+  masterSpecificity[j]=CM$byClass[2]
+  }
+}
+ptitle=print(paste0(numks," values of K for ",iterations," iterations."))
+MeanAcc = colMeans(masterAcc)
+MeanSpec = mean(masterSpecificity)
+MeanSens = mean(masterSensitivity)
+plot(seq(1,numks,1),MeanAcc, type = "l",xlab = "Values of K",ylab = "Accuracy",main = ptitle)
+which.max(MeanAcc)
+
+CM
+
+
+```
+
+## Naive Bayse Classification 
+```{r}
+set.seed(123)
+perc=.8
+numks = 5
+vars = c("")
+iterations=20
+masterAcc = matrix(nrow = iterations, ncol = numks)
+masterSensitivity = matrix(nrow = iterations)
+masterSpecificity = matrix(nrow = iterations)
+for(i in 1:iterations)
+  {
+  rn=sample(1:30,1)
+  trainIndices = sample(1:dim(attritdf)[1],round(perc * dim(attritdf)[1]))
+    train = attritdf[trainIndices,]
+    test = attritdf[-trainIndices,]
+  model = naiveBayes(train[,c(2,6,12,15,16,17,18,20,24,25,27,29,30,31,33,34)],as.factor(train$Attrition),laplace = 1)
+  table(predict(model,test[,c(2,6,12,15,16,17,18,20,24,25,27,29,30,31,33,34)]),as.factor(test$Attrition))
+  
+  CM = confusionMatrix(table(predict(model,test[,c(2,6,12,15,16,17,18,20,24,25,27,29,30,31,33,34)]),as.factor(test$Attrition)))
+  masterAcc[j]=CM$overall[1]
+  masterSensitivity[i]=CM$byClass[1]
+  masterSpecificity[i]=CM$byClass[1]
+}
+# Adjusted for noattritiondf
+# c(2,5,11,14,15,16,17,19,23,24,26,28,29,30,32,33)
+
+tmpdf <- attritdf[c(2,6,12,15,16,17,18,20,24,25,27,29,30,31,33,34)]
+tmpdf2 <- noattritdf[c(2,5,11,14,15,16,17,19,23,24,26,28,29,30,32,33)]
+attritOut <- predict(model,tmpdf2)
+myout=cbind.data.frame(noattritdf$ID,attritOut)
+colnames(myout) <- c("ID","Attrition")
+
+write.csv(myout, file = "/Users/malco/Documents/MDS/MDS_6306_DDS/DDS-CaseStudy2/Case2PredictionsMalcolmCarlsonAttrition.csv",row.names = FALSE)
+plot(attritOut,  col="darkgreen", main = "Plot of Attrition Predictions")
+CM
+```
+
+## Regression analysis of salary
+```{r}
+set.seed(123)
+training.samples <- attritdf$MonthlyIncome %>%
+createDataPartition(p=0.8, list = FALSE)
+train.data <- attritdf[training.samples, ]
+test.data <- attritdf[-training.samples, ]
+
+modelSalary<-lm(MonthlyIncome~JobLevel+JobRole+
+TotalWorkingYears,data=attritdf)
+
+pairs(~MonthlyIncome+JobLevel+TotalWorkingYears,data=attritdf)
+
+plot(modelSalary)
+car::vif(modelSalary)
+
+mod1resid = rstudent(modelSalary)
+hist(mod1resid,col="darkgreen",main = "Histogram of residuals for model",ylab = NULL,xlab = NULL)
+
+predictions <- modelSalary %>% predict(test.data)
+data.frame( R2 = R2(predictions, test.data$MonthlyIncome),
+           RMSE = RMSE(predictions, test.data$MonthlyIncome),
+            MAE = MAE(predictions, test.data$MonthlyIncome))
+
+summary(modelSalary)
+salaryPred <- modelSalary%>% predict(nosalarydf)
+myout <- cbind.data.frame(nosalarydf$ID,salaryPred)
+colnames(myout) <- c("ID","MonthlyIncome")
+write.csv(myout, file = "/Users/malco/Documents/MDS/MDS_6306_DDS/DDS-CaseStudy2/Case2PredictionsMalcolmCarlsonSalary.csv",row.names = FALSE)
+
+
+```
+
+
+
+## Stepwise model
+```{r}
+attritdf2 <- attritdf%>%dplyr::select(Age,DailyRate,Department,DistanceFromHome,Education,EducationField,EnvironmentSatisfaction,HourlyRate,JobInvolvement,JobLevel,JobRole,JobSatisfaction,MaritalStatus,MonthlyIncome,MonthlyRate,NumCompaniesWorked,OverTime,PercentSalaryHike,PerformanceRating,RelationshipSatisfaction,StandardHours,StockOptionLevel,TotalWorkingYears,TrainingTimesLastYear,WorkLifeBalance,YearsAtCompany,YearsInCurrentRole,YearsSinceLastPromotion,YearsWithCurrManager)
+
+# Fit the full model
+set.seed(123)
+full.model <- lm(MonthlyIncome ~., data = attritdf2)
+# Stepwise regression model
+step.model <- stepAIC(full.model, direction = "both", 
+                      trace = FALSE)
+
+pairs(~MonthlyIncome+JobLevel+TotalWorkingYears,data=attritdf)
+
+plot(step.model)
+car::vif(step.model)
+
+step.modelid = rstudent(step.model)
+hist(step.modelid,col="darkgreen",main = "Histogram of residuals for model",ylab = NULL,xlab = NULL)
+
+predictions <- step.model %>% predict(test.data)
+data.frame( R2 = R2(predictions, test.data$MonthlyIncome),
+           RMSE = RMSE(predictions, test.data$MonthlyIncome),
+            MAE = MAE(predictions, test.data$MonthlyIncome))
+
+summary(step.model)
+car::vif(step.model)
+
+salaryPred <- step.model%>% predict(nosalarydf)
+myout <- cbind.data.frame(nosalarydf$ID,salaryPred)
+colnames(myout) <- c("ID","MonthlyIncome")
+write.csv(myout, file = "/Users/malco/Documents/MDS/MDS_6306_DDS/DDS-CaseStudy2/Case2PredictionsMalcolmCarlsonSalary.csv",row.names = FALSE)
+
+```
+
